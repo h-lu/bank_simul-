@@ -186,7 +186,7 @@ def get_variable_explanation(variable):
         """,
         '价格水 (P)': """
         当价格水平(P)上升时：
-        - 产出(Y)可能下降，因为实际余额应。
+        - 产出(Y)可能降，因为实际余额应。
         - 利率(i)可能上升，因为货币需求增加。
         - 汇率(E)可能贬值，因为本国商品相对变贵。
         - 失业率(u)可能上升，因为实际工资下降导致劳动需求减少。
@@ -208,39 +208,51 @@ def get_variable_explanation(variable):
         - 利率(i)可能上升，因为中央银行可能采取紧缩性货币政策。
         - 汇率(E)可能贬值，因为本国货币购买力下降。
         - 失业率(u)可能短期内下降，但长期可能上升（菲利普斯曲线）。
-        - 预期通胀率(π_e)可能上升，因为人们调整对未来通胀的预。
+        - 预期通胀率(π_e)可能上升，因为人们调整对未来通胀的
         """
     }
     return explanations.get(variable, "没有该变量的具体解释。")
 
 # 添加这个新函数来生成详细的提示词模板
-def create_detailed_prompt(results, G, T, M):
+def create_detailed_prompt(base_results, policy_results, G_base, G_policy, T_base, T_policy, M_base, M_policy):
     prompt = f"""
-    作为一位宏观经济学专家,请分析以下经济模拟结果,并提供详细解释:
+    作为一位宏观经济学专家,请分析以下两种经济情景的模拟结果,并提供详细解释:
 
-    政策参数:
-    - 政府支出(G): {G}
-    - 税收(T): {T}
-    - 货币供给(M): {M}
+    基准情景:
+    1. 政策参数:
+       - 政府支出(G): {G_base}
+       - 税收(T): {T_base}
+       - 货币供给(M): {M_base}
+    2. 经济指标:
+       - GDP: 初始 {base_results['产出 (Y)'][0]:.2f}, 最终 {base_results['产出 (Y)'][-1]:.2f}
+       - 失业率: 初始 {base_results['失业率 (u)'][0]:.2f}, 最终 {base_results['失业率 (u)'][-1]:.2f}
+       - 通胀率: 初始 {base_results['通胀率 (π)'][0]:.2f}, 最终 {base_results['通胀率 (π)'][-1]:.2f}
+       - 利率: 初始 {base_results['利率 (i)'][0]:.2f}, 最终 {base_results['利率 (i)'][-1]:.2f}
+       - 价格水平: 初始 {base_results['价格水平 (P)'][0]:.2f}, 最终 {base_results['价格水平 (P)'][-1]:.2f}
 
-    经济指标:
-    - GDP: 初始 {results['产出 (Y)'][0]:.2f}, 最终 {results['产出 (Y)'][-1]:.2f}
-    - 失业率: 初始 {results['失业率 (u)'][0]:.2f}, 最终 {results['失业率 (u)'][-1]:.2f}
-    - 通胀率: 初始 {results['通胀率 (π)'][0]:.2f}, 最终 {results['通胀率 (π)'][-1]:.2f}
-    - 利率: 初始 {results['利率 (i)'][0]:.2f}, 最终 {results['利率 (i)'][-1]:.2f}
-    - 价格水平: 初始 {results['价格水平 (P)'][0]:.2f}, 最终 {results['价格水平 (P)'][-1]:.2f}
+    政策情景:
+    1. 政策参数:
+       - 政府支出(G): {G_policy}
+       - 税收(T): {T_policy}
+       - 货币供给(M): {M_policy}
+    2. 经济指标:
+       - GDP: 初始 {policy_results['产出 (Y)'][0]:.2f}, 最终 {policy_results['产出 (Y)'][-1]:.2f}
+       - 失业率: 初始 {policy_results['失业率 (u)'][0]:.2f}, 最终 {policy_results['失业率 (u)'][-1]:.2f}
+       - 通胀率: 初始 {policy_results['通胀率 (π)'][0]:.2f}, 最终 {policy_results['通胀率 (π)'][-1]:.2f}
+       - 利率: 初始 {policy_results['利率 (i)'][0]:.2f}, 最终 {policy_results['利率 (i)'][-1]:.2f}
+       - 价格水平: 初始 {policy_results['价格水平 (P)'][0]:.2f}, 最终 {policy_results['价格水平 (P)'][-1]:.2f}
 
     请提供以下分析:
-    1. 经济表现概述: 简要说明模拟期间经济的整体表现。
-    2. 各指标分析: 
-       a) 详细解释GDP、失业率、通胀率、利率和价格水平的变化趋势。
+    1. 政策变化概述: 简要说明政策情景相对于基准情景的主要政策变化。
+    2. 经济影响分析: 
+       a) 详细比较两种情景下各个经济指标(GDP、失业率、通胀率、利率、价格水平)的变化。
        b) 分析这些指标之间的相互作用和可能的因果关系。
-    3. 政策效果评估: 评估给定的政府支出、税收和货币供给水平对经济的影响。
-    4. 短期vs长期影响: 讨论观察到的经济变化在短期和长期可能产生的不同效果。
-    5. 潜在风险: 指出当前经济状况可能带来的潜在风险或负面影响。
+    3. 短期vs长期影响: 讨论政策变化可能产生的短期和长期经济效果的差异。
+    4. 政策效果评估: 评估政策变化是否达到了预期目标,有何优缺点。
+    5. 潜在风险: 指出政策情景可能带来的潜在经济风险或负面影响。
     6. 政策建议: 
-       a) 基于分析结果,提出可能的政策调整建议。
-       b) 如果需要,建议配套措施以改善经济表现或缓解潜在问题。
+       a) 基于分析结果,提出改进或优化政策的建议。
+       b) 如果需要,建议配套措施以增强政策效果或缓解负面影响。
     7. 总结: 简要总结分析结果和主要观点。
 
     请确保您的分析全面、深入,并考虑到宏观经济学的各个方面。
@@ -248,8 +260,8 @@ def create_detailed_prompt(results, G, T, M):
     return prompt
 
 # 修改generate_ai_explanation函数以适应新的prompt格式
-def generate_ai_explanation(results, G, T, M):
-    prompt = create_detailed_prompt(results, G, T, M)
+def generate_ai_explanation(base_results, policy_results, G_base, G_policy, T_base, T_policy, M_base, M_policy):
+    prompt = create_detailed_prompt(base_results, policy_results, G_base, G_policy, T_base, T_policy, M_base, M_policy)
 
     try:
         response = client.chat.completions.create(
@@ -337,13 +349,65 @@ def policy_comparison_demo(params):
         full_response = ""
         with st.spinner("正在生成AI解释..."):
             stream = generate_ai_explanation(
-                base_results, G_base, T_base, M_base
+                base_results, policy_results,
+                G_base, G_policy,
+                T_base, T_policy,
+                M_base, M_policy
             )
             for chunk in stream:
                 if chunk.choices[0].delta.content is not None:
                     full_response += chunk.choices[0].delta.content
                     explanation_placeholder.markdown(full_response + "▌")
         explanation_placeholder.markdown(full_response)
+
+def create_single_scenario_prompt(results, G, T, M):
+    prompt = f"""
+    作为一位宏观经济学专家,请分析以下经济模拟结果,并提供详细解释:
+
+    政策参数:
+    - 政府支出(G): {G}
+    - 税收(T): {T}
+    - 货币供给(M): {M}
+
+    经济指标:
+    - GDP: 初始 {results['产出 (Y)'][0]:.2f}, 最终 {results['产出 (Y)'][-1]:.2f}
+    - 失业率: 初始 {results['失业率 (u)'][0]:.2f}, 最终 {results['失业率 (u)'][-1]:.2f}
+    - 通胀率: 初始 {results['通胀率 (π)'][0]:.2f}, 最终 {results['通胀率 (π)'][-1]:.2f}
+    - 利率: 初始 {results['利率 (i)'][0]:.2f}, 最终 {results['利率 (i)'][-1]:.2f}
+    - 价格水平: 初始 {results['价格水平 (P)'][0]:.2f}, 最终 {results['价格水平 (P)'][-1]:.2f}
+
+    请提供以下分析:
+    1. 经济表现概述: 简要说明模拟期间经济的整体表现。
+    2. 各指标分析: 
+       a) 详细解释GDP、失业率、通胀率、利率和价格水平的变化趋势。
+       b) 分析这些指标之间的相互作用和可能的因果关系。
+    3. 政策效果评估: 评估给定的政府支出、税收和货币供给水平对经济的影响。
+    4. 短期vs长期影响: 讨论观察到的经济变化在短期和长期可能产生的不同效果。
+    5. 潜在风险: 指出当前经济状况可能带来的潜在风险或负面影响。
+    6. 政策建议: 
+       a) 基于分析结果,提出可能的政策调整建议。
+       b) 如果需要,建议配套措施以改善经济表现或缓解潜在问题。
+    7. 总结: 简要总结分析结果和主要观点。
+
+    请确保您的分析全面、深入,并考虑到宏观经济学的各个方面。
+    """
+    return prompt
+
+def generate_single_scenario_ai_explanation(results, G, T, M):
+    prompt = create_single_scenario_prompt(results, G, T, M)
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "你是一位资深的宏观经济学专家,擅长分析复杂的经济政策影响。请提供深入、全面且结构清晰的分析。"},
+                {"role": "user", "content": prompt}
+            ],
+            stream=True
+        )
+        return response
+    except Exception as e:
+        return f"无法生成AI解释: {str(e)}"
 
 # 主应用界面
 st.title('中央银行政策影响模拟器')
@@ -456,7 +520,7 @@ if menu == "参数设置和模拟":
         explanation_placeholder = st.empty()
         full_response = ""
         with st.spinner("正在生成AI解释..."):
-            stream = generate_ai_explanation(
+            stream = generate_single_scenario_ai_explanation(
                 history, G, T, initial_money_supply
             )
             for chunk in stream:
@@ -541,7 +605,7 @@ elif menu == "模型说明":
     - 考虑了开放经济（包含汇率和国际贸易）
     - 包含价格粘性通胀预期的动态调整
     - 纳入了货币政策规则（泰勒规则）
-    - 考虑了长期经济增长
+    - 考虑了长期经增长
     - 包含了劳动市场（通过奥肯法则和菲利普斯曲线）
 
     通过调整不同的参数,你可以观察经济如何对不同的政策和冲击做出反应。这有助于理解宏观经济政策的效果和经济系统的动态特性
