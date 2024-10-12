@@ -16,31 +16,31 @@ client = OpenAI(api_key="sk-89633c366041484f91f993634c6e31ab", base_url="https:/
 @st.cache_data
 def get_default_params():
     params = {
-        'C0': 100,  # 自主消费
-        'C1': 0.8,  # 边际消费倾向
-        'I0': 100,  # 自主投资
-        'I1': 0.2,  # 投资对利率的敏感度
-        'G': 100,   # 政府支出
-        'T': 100,   # 税收
-        'NX0': 50,  # 自主净出口
-        'NX1': 0.1, # 净出口对汇率的敏感度
-        'L0': 0.2,  # 货币需求收入弹性
-        'L1': 0.1,  # 货币需求利率弹性
-        'L2': 0.05, # 货币需求汇率弹性
-        'M': 1000,  # 货币供给
-        'P': 1,     # 初始价格水平
-        'Yn': 1000, # 潜在产出
-        'un': 0.05, # 自然失业率
-        'alpha': 2, # 奥肯系数
-        'beta': 0.5,# 菲利普斯曲线斜率
-        'pi_e': 0.02,    # 初始预期通胀率
-        'kappa': 0.05,   # 价格调整速度
-        'rho': 0.7,      # 预期调整参数
-        'phi_pi': 1.5,   # 泰勒规则通胀系数
-        'phi_y': 0.5,    # 泰勒规则产出缺口系数
-        'r_star': 0.02,  # 自然利率
-        'g': 0.02,       # 长期增长率
-        'i_foreign': 0.02, # 国外利率
+        'C0': 5000,   # 自主消费，反映基本生活需求
+        'C1': 0.65,   # 边际消费倾向，根据中国数据调整
+        'I0': 3000,   # 自主投资，反映中国较高的投资率
+        'I1': 0.2,    # 投资对利率的敏感度，根据中国数据调整
+        'G': 4000,    # 政府支出，约占GDP的30-35%
+        'T': 3800,    # 税收，略低于政府支出，反映适度的财政赤字
+        'NX0': 500,   # 自主净出口，反映中国的贸易顺差
+        'NX1': 0.2,   # 净出口对汇率的敏感度，反映适度的敏感度
+        'L0': 1.0,    # 货币需求收入弹性，根据中国数据调整
+        'L1': 0.2,    # 货币需求利率弹性，据中国数据调整
+        'L2': 0.05,   # 货币需求汇率弹性，反映低度敏感性
+        'M': 20000,   # 货币供给，反映中国较高的M2/GDP比率
+        'P': 1,       # 初始价格水平，作为基准
+        'Yn': 15000,  # 潜在产出，设置为与实际GDP相近的水平
+        'un': 0.045,  # 自然失业率，根据中国数据调整
+        'alpha': 1.5, # 奥肯系数，反映中国劳动力市场的特殊性
+        'beta': 0.3,  # 菲利普斯曲线斜率，根据中国数据调整
+        'pi_e': 0.03, # 初始预期通胀率，根据中国近期通胀目标调整
+        'kappa': 0.1, # 价格调整速度，根据中国数据调整
+        'rho': 0.7,   # 预期调整参数，反映预期的适度粘性
+        'phi_pi': 1.3,# 泰勒规则通胀系数，根据中国数据调整
+        'phi_y': 0.4, # 泰勒规则产出缺口系数，根据中国数据调整
+        'r_star': 0.03, # 自然利率，根据中国近期经济情况调整
+        'g': 0.055,   # 长期增长率，根据中国最新经济增长目标调整
+        'i_foreign': 0.02, # 国外利率，保持不变
     }
     return params
 
@@ -68,8 +68,9 @@ def solve_model(params, G, T, M, i, E_external=None, shock_type=None, shock_valu
     def equations(vars):
         Y, i_var, E_var, P_new, pi_e_new = vars
         
-        # 确保Y不为负
-        Y = max(Y, 0.1)  # 设置一个很小的正数作为下限
+        # 确保Y不为负，并设置一个更高的上限
+        Y = max(Y, 0.1)
+        Y = min(Y, Yn * 10)  # 设置上限为潜在产出的10倍
         
         # IS曲线
         C = params['C0'] + params['C1'] * (Y - T)
@@ -134,10 +135,12 @@ def simulate_dynamic(params, G, T, M_initial, i_initial, E_initial, P_initial, p
         result = solve_model(params, G, T, M, i_history[-1], E_external)
         
         # 添加检查和约束
-        Y_sol = max(result['Y'], 0.1)  # 确保Y不为负
-        i_sol = max(result['i'], 0)    # 确保利率不为负
-        E_sol = max(result['E'], 0.1)  # 确保汇率不为负
-        P_sol = max(result['P'], 0.1)  # 确保价格水平不为负
+        Y_sol = max(result['Y'], 0.1)
+        Y_sol = min(Y_sol, params['Yn'] * 10)  # 设置上限为潜在产出的10倍
+        i_sol = max(result['i'], 0)
+        i_sol = min(i_sol, 0.5)  # 设置利率上限为50%
+        E_sol = max(result['E'], 0.1)
+        P_sol = max(result['P'], 0.1)
         
         Y_history.append(Y_sol)
         i_history.append(i_sol)
@@ -167,7 +170,7 @@ def get_variable_explanation(variable):
         '产出 (Y)': """
         当产出(Y)增加时：
         - 利率(i)可能上，因为更高的收入会增加货需求。
-        - 价格水平(P)可能上升，因为需求增加。
+        - 价格水(P)可能上升，因为需求增加。
         - 失业率(u)可能下降，因为更多的劳动力被雇佣。
         - 通胀率(π)可能上升，因为需求压力增加。
         """,
@@ -194,8 +197,8 @@ def get_variable_explanation(variable):
         '预期通胀率 (π_e)': """
         当预期通胀率(π_e)上升时：
         - 利率(i)可能上升，因人们要求更高的名义利率。
-        - 价格水平(P)可能上升，因为工资和价格设定行为改变。
-        - 实际产出(Y)可能短期内增加，但长期可能不变或下降。
+        - 价格水平(P)可能上升，因为工资���价格设定行为改变。
+        - 实际产出(Y)可能短期内增加，但长期可能不降。
         """,
         '失业率 (u)': """
         当失业率(u)上升时：
@@ -243,7 +246,7 @@ def create_detailed_prompt(base_results, policy_results, G_base, G_policy, T_bas
        - 价格水平: 初始 {policy_results['价格水平 (P)'][0]:.2f}, 最终 {policy_results['价格水平 (P)'][-1]:.2f}
 
     请提供以下分析:
-    1. 政策变化概述: 简要说明政策情景相对于基准情景的主要政策变化。
+    1. 政变化概述: 简要说明政策情景对于基准情景的主要政策变化。
     2. 经济影响分析: 
        a) 详细比较两种情景下各个经济指标(GDP、失业率、通胀率、利率、价格水平)的变化。
        b) 分析这些指标之间的相互作用和可能的因果关系。
@@ -282,17 +285,17 @@ def policy_comparison_demo(params):
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**基准情景**")
-        G_base = st.number_input("政府支出 (G)", value=float(params['G']), step=10.0, key="G_base")
-        T_base = st.number_input("税收 (T)", value=float(params['T']), step=10.0, key="T_base")
-        M_base = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_base")
-        i_base = st.number_input("初始利率 (i)", value=0.05, step=0.01, format="%.2f", key="i_base")
+        G_base = st.number_input("政府支出 (G)", value=float(params['G']), step=100.0, min_value=0.0, max_value=10000.0, key="G_base")
+        T_base = st.number_input("税收 (T)", value=float(params['T']), step=100.0, min_value=0.0, max_value=10000.0, key="T_base")
+        M_base = st.number_input("货币供给 (M)", value=float(params['M']), step=1000.0, min_value=0.0, max_value=100000.0, key="M_base")
+        i_base = st.number_input("初始利率 (i)", value=0.03, step=0.01, format="%.2f", min_value=0.0, max_value=0.2, key="i_base")
 
     with col2:
         st.markdown("**政策情景**")
-        G_policy = st.number_input("政府支出 (G)", value=float(params['G'])*1.2, step=10.0, key="G_policy")
-        T_policy = st.number_input("税收 (T)", value=float(params['T']), step=10.0, key="T_policy")
-        M_policy = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_policy")
-        i_policy = st.number_input("初始利率 (i)", value=0.05, step=0.01, format="%.2f", key="i_policy")
+        G_policy = st.number_input("政府支出 (G)", value=float(params['G'])*1.2, step=100.0, min_value=0.0, max_value=10000.0, key="G_policy")
+        T_policy = st.number_input("税收 (T)", value=float(params['T']), step=100.0, min_value=0.0, max_value=10000.0, key="T_policy")
+        M_policy = st.number_input("货币供给 (M)", value=float(params['M']), step=1000.0, min_value=0.0, max_value=100000.0, key="M_policy")
+        i_policy = st.number_input("初始利率 (i)", value=0.03, step=0.01, format="%.2f", min_value=0.0, max_value=0.2, key="i_policy")
 
     if st.button("运行对比模拟并生成AI解释"):
         base_params = copy.deepcopy(params)
@@ -304,16 +307,16 @@ def policy_comparison_demo(params):
         # 创建对比数据框
         comparison_df = pd.DataFrame({
             '指标': ['初始GDP', '最终GDP', '初始利率', '最终利率', '初始价格水平', '最终价格水平', '初始失业率', '最终失业率', '初始通胀率', '最终通胀率'],
-            '基准情景': [base_results['产出 (Y)'][0], base_results['产出 (Y)'][-1], 
-                        base_results['利率 (i)'][0], base_results['利率 (i)'][-1], 
-                        base_results['价格水平 (P)'][0], base_results['价格水平 (P)'][-1], 
-                        base_results['失业率 (u)'][0], base_results['失业率 (u)'][-1], 
-                        base_results['通胀率 (π)'][0], base_results['通胀率 (π)'][-1]],
-            '政策情景': [policy_results['产出 (Y)'][0], policy_results['产出 (Y)'][-1], 
-                        policy_results['利率 (i)'][0], policy_results['利率 (i)'][-1], 
-                        policy_results['价格水平 (P)'][0], policy_results['价格水平 (P)'][-1], 
-                        policy_results['失业率 (u)'][0], policy_results['失业率 (u)'][-1], 
-                        policy_results['通胀率 (π)'][0], policy_results['通胀率 (π)'][-1]]
+            '基准情景': [f"{base_results['产出 (Y)'][0]:.0f}", f"{base_results['产出 (Y)'][-1]:.0f}", 
+                        f"{base_results['利率 (i)'][0]:.2%}", f"{base_results['利率 (i)'][-1]:.2%}", 
+                        f"{base_results['价格水平 (P)'][0]:.2f}", f"{base_results['价格水平 (P)'][-1]:.2f}", 
+                        f"{base_results['失业率 (u)'][0]:.2%}", f"{base_results['失业率 (u)'][-1]:.2%}", 
+                        f"{base_results['通胀率 (π)'][0]:.2%}", f"{base_results['通胀率 (π)'][-1]:.2%}"],
+            '政策情景': [f"{policy_results['产出 (Y)'][0]:.0f}", f"{policy_results['产出 (Y)'][-1]:.0f}", 
+                        f"{policy_results['利率 (i)'][0]:.2%}", f"{policy_results['利率 (i)'][-1]:.2%}", 
+                        f"{policy_results['价格水平 (P)'][0]:.2f}", f"{policy_results['价格水平 (P)'][-1]:.2f}", 
+                        f"{policy_results['失业率 (u)'][0]:.2%}", f"{policy_results['失业率 (u)'][-1]:.2%}", 
+                        f"{policy_results['通胀率 (π)'][0]:.2%}", f"{policy_results['通胀率 (π)'][-1]:.2%}"]
         })
 
         st.subheader("模拟结果对比")
@@ -332,6 +335,15 @@ def policy_comparison_demo(params):
                                      mode='lines', 
                                      name='政策情景'))
             fig.update_layout(title=f'{indicator}随时间的变化', xaxis_title='时间', yaxis_title=indicator)
+            
+            # 调整y轴范围
+            if indicator == '产出 (Y)':
+                fig.update_yaxes(range=[0, 30000])
+            elif indicator in ['利率 (i)', '通胀率 (π)', '失业率 (u)']:
+                fig.update_yaxes(range=[0, 0.2])
+            elif indicator == '价格水平 (P)':
+                fig.update_yaxes(range=[0, 2])
+            
             st.plotly_chart(fig)
 
         # 添加失业率解释
@@ -454,7 +466,7 @@ if menu == "参数设置和模拟":
             params['L1'] = st.number_input('货币需求利率弹性 (L1)', value=params['L1'], step=0.1, format="%.2f")
         with col3:
             params['kappa'] = st.number_input('价格调整速度 (κ)', value=params['kappa'], step=0.01, format="%.2f")
-            params['rho'] = st.number_input('预期调整参数 (ρ)', value=params['rho'], step=0.1, format="%.2f")
+            params['rho'] = st.number_input('期调整参数 (ρ)', value=params['rho'], step=0.1, format="%.2f")
             params['phi_pi'] = st.number_input('泰勒规则通胀系数 (φ_π)', value=params['phi_pi'], step=0.1, format="%.2f")
             params['phi_y'] = st.number_input('泰勒规则产出缺口系数 (φ_y)', value=params['phi_y'], step=0.1, format="%.2f")
 
@@ -507,7 +519,7 @@ if menu == "参数设置和模拟":
         st.markdown("""
         注意：模型计算的失业率可能会出现非常低的值，这是由于模型的简化性质和长期增长假设导致的。
         在实际经济中，失业率通常不会降到非常低的水平。这个结果提醒我们，模型虽然有助于理解经济
-        政策的影响，但仍然是对现实的简化表示。在解释结果时，我们应该更多地关注失业率的变化趋势，
+        政策的影响，但仍然是对现实的简化表示在解释结果时，我们应该更多地关注失业率的变化趋势，
         而不是具体的数值。
         """)
 
