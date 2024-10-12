@@ -26,12 +26,12 @@ def get_default_params():
         'P': 1,     # 初始价格水平
         'Yn': 1000, # 潜在产出
         'un': 0.05, # 自然失业率
-        'alpha': 2, # 奥肯系
+        'alpha': 2, # 奥肯系数
         'beta': 0.5,# 菲利普斯曲线斜率
         'pi_e': 0.02,    # 初始预期通胀率
         'kappa': 0.05,   # 价格调整速度
         'rho': 0.7,      # 预期调整参数
-        'phi_pi': 1.5,   # 泰勒规则通���系数
+        'phi_pi': 1.5,   # 泰勒规则通胀系数
         'phi_y': 0.5,    # 泰勒规则产出缺口系数
         'r_star': 0.02,  # 自然利率
         'g': 0.02,       # 长期增长率
@@ -63,6 +63,9 @@ def solve_model(params, G, T, M, i, E_external=None, shock_type=None, shock_valu
     def equations(vars):
         Y, i_var, E_var, P_new, pi_e_new = vars
         
+        # 确保Y不为负
+        Y = max(Y, 0.1)  # 设置一个很小的正数作为下限
+        
         # IS曲线
         C = params['C0'] + params['C1'] * (Y - T)
         I = params['I0'] - params['I1'] * i_var
@@ -92,7 +95,7 @@ def solve_model(params, G, T, M, i, E_external=None, shock_type=None, shock_valu
     except:
         Y_sol, i_sol, E_sol, P_sol, pi_e_sol = [np.nan] * 5
     
-    u_sol = params['un'] - params['alpha'] * (Y_sol - Yn) / Yn
+    u_sol = max(0, params['un'] - params['alpha'] * (Y_sol - Yn) / Yn)
     pi_sol = (P_sol - P) / P
     
     return {
@@ -125,15 +128,22 @@ def simulate_dynamic(params, G, T, M_initial, i_initial, E_initial, P_initial, p
         
         result = solve_model(params, G, T, M, i_history[-1], E_external)
         
-        Y_history.append(result['Y'])
-        i_history.append(result['i'])
-        E_history.append(result['E'])
-        P_history.append(result['P'])
+        # 添加检查和约束
+        Y_sol = max(result['Y'], 0.1)  # 确保Y不为负
+        i_sol = max(result['i'], 0)    # 确保利率不为负
+        E_sol = max(result['E'], 0.1)  # 确保汇率不为负
+        P_sol = max(result['P'], 0.1)  # 确保价格水平不为负
+        
+        Y_history.append(Y_sol)
+        i_history.append(i_sol)
+        E_history.append(E_sol)
+        P_history.append(P_sol)
         pi_e_history.append(result['pi_e'])
         u_history.append(result['u'])
         pi_history.append(result['pi'])
         
-        params['Yn'] = long_term_growth(params['Yn'], params['g'])
+        # 调整潜在产出的增长速度
+        params['Yn'] = long_term_growth(params['Yn'], min(params['g'], 0.02))  # 限制最大增长率为2%
     
     history = {
         '产出 (Y)': Y_history,
@@ -151,7 +161,7 @@ def get_variable_explanation(variable):
     explanations = {
         '产出 (Y)': """
         当产出(Y)增加时：
-        - 利率(i)可能上升，因为更高的收入会增加货需求。
+        - 利率(i)可能上，因为更高的收入会增加货需求。
         - 价格水平(P)可能上升，因为需求增加。
         - 失业率(u)可能下降，因为更多的劳动力被雇佣。
         - 通胀率(π)可能上升，因为需求压力增加。
@@ -159,7 +169,7 @@ def get_variable_explanation(variable):
         '利率 (i)': """
         当利率(i)上升时：
         - 产出(Y)可能下降，因为投资和消费减少。
-        - 汇率(E)可能升值，因为资本流入增加。
+        - 汇率(E)可升值，因为资本流入增加。
         - 价格水平(P)可能下降，因为总需求减少。
         - 失业率(u)可能上升因为经济活动减少。
         """,
@@ -206,7 +216,7 @@ def generate_detailed_explanation(base_results, policy_results, G_base, G_policy
     if abs(gdp_change) < 0.1:
         explanations.append("GDP基本保持不变，政策对总产出的影响较小。")
     elif gdp_change > 0:
-        explanations.append(f"GDP增加了{gdp_change:.2f}%。这可能是由于{'�����支出加' if G_policy > G_base else '货币供给增加' if M_policy > M_base else '其他因素'}刺激了总需求。")
+        explanations.append(f"GDP增加了{gdp_change:.2f}%。这可能是由于{'政府支出加' if G_policy > G_base else '货币供给增加' if M_policy > M_base else '其他因素'}刺激了总需求。")
     else:
         explanations.append(f"GDP减少了{abs(gdp_change):.2f}%。这可能是由于{'政府支出减少' if G_policy < G_base else '货币供给减少' if M_policy < M_base else '其他因素'}抑制了总求。")
 
@@ -219,10 +229,10 @@ def generate_detailed_explanation(base_results, policy_results, G_base, G_policy
     else:
         explanations.append(f"利率下降了{abs(interest_change):.3f}个百分点。这可能是由于{'总需求减少导致货币需求下降' if gdp_change < 0 else '货币供给增加'}。")
 
-    # 价格水平解释
+    # 价格水���解释
     price_change = (policy_results['价格水平 (P)'][-1] - base_results['价格水平 (P)'][-1]) / base_results['价格水平 (P)'][-1] * 100
     if abs(price_change) < 0.1:
-        explanations.append("价格水平基本稳定，说明政策没有显著影响通胀或通缩。")
+        explanations.append("价格水平基本稳定，说明政策没有显著影响通胀通缩。")
     elif price_change > 0:
         explanations.append(f"价格水平上升了{price_change:.2f}%。这表明{'总需求增加导致了轻微的通胀压力' if gdp_change > 0 else '成本推动型通胀可能发生'}。")
     else:
@@ -269,11 +279,11 @@ def generate_detailed_explanation(base_results, policy_results, G_base, G_policy
     # 政策建议
     explanations.append("建议:")
     if abs(gdp_change) > 2:
-        explanations.append("- 密切关注经济增长的可持续性和质量。")
+        explanations.append("- 密切关注经济长的可持续性和质量。")
     if abs(inflation_change) > 0.02:
         explanations.append("- 警惕通胀或通缩风险，必要时调整货币政策。")
     if abs(unemployment_change) > 0.01:
-        explanations.append("- 关注就业市场变化，考虑实施相应的劳动力市场政策。")
+        explanations.append("- 关就业市场变化，考虑实施相应的劳动力市场政策。")
     explanations.append("- 持续监测各项经济指标，根据实际情况及时调整政策。")
 
     return "\n".join(explanations)
@@ -283,7 +293,7 @@ def policy_comparison_demo(params):
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**基准情景**")
+        st.markdown("**基准景**")
         G_base = st.number_input("政府支出 (G)", value=float(params['G']), step=10.0, key="G_base")
         T_base = st.number_input("税收 (T)", value=float(params['T']), step=10.0, key="T_base")
         M_base = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_base")
@@ -344,6 +354,15 @@ def policy_comparison_demo(params):
 
         st.markdown("### 详细结果解释")
         st.markdown(detailed_explanation)
+
+        # 添加失业率解释
+        st.markdown("### 失业率说明")
+        st.markdown("""
+        注意：模型计算的失业率可能会出现非常低的值，这是由于模型的简化性质和长期增长假设导致的。
+        在实际经济中，失业率通常不会降到非常低的水平。这个结果提醒我们，模型虽然有助于理解经济
+        政策的影响，但仍然是对现实的简化表示。在解释结果时，我们应该更多地关注失业率的变化趋势，
+        而不是具体的数值。
+        """)
 
 # 主应用界面
 st.title('中央银行政策影响模拟器')
@@ -414,7 +433,7 @@ if menu == "参数设置和模拟":
         # 转换为数据框
         df_history = pd.DataFrame(history)
 
-        # 为每个经济指标创建单独的图表
+        # 为每个经济指标创建图表
         for column in df_history.columns:
             st.subheader(f'{column}随时间的变化')
             st.line_chart(df_history[column])
@@ -481,7 +500,7 @@ elif menu == "模型说明":
 
     st.markdown("这是一个货币政策规则,描述了中央银行如何设定利率。i是名义利率,r*是自然利率,φ_π和φ_y分别是对通胀和产出缺口的反应系数。")
 
-    st.markdown("### 5. 长��增长方程:")
+    st.markdown("### 5. 长期增长方程:")
     st.latex(r'Y_{n,new} = Y_n(1 + g)')
 
     st.markdown("这个方程描述了潜在产出的长期增长,其中g是长期增长率。")
