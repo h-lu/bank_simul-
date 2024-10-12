@@ -10,7 +10,7 @@ from openai import OpenAI
 import os
 
 # 设置 DeepSeek API
-client = OpenAI(api_key="sk-89633c366041484f91f993634c6e31ab", base_url="https://api.deepseek.com")
+client = OpenAI(api_key="sk-89633c366041484f91f993634c6e31ab", base_url="https://api.deepseek.com/beta")
 
 # 更新默认参数
 @st.cache_data
