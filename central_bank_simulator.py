@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import fsolve
 import plotly.graph_objects as go
+import copy
 
 # 更新默认参数
 @st.cache_data
@@ -25,12 +26,12 @@ def get_default_params():
         'P': 1,     # 初始价格水平
         'Yn': 1000, # 潜在产出
         'un': 0.05, # 自然失业率
-        'alpha': 2, # 奥肯系��
+        'alpha': 2, # 奥肯系
         'beta': 0.5,# 菲利普斯曲线斜率
         'pi_e': 0.02,    # 初始预期通胀率
         'kappa': 0.05,   # 价格调整速度
         'rho': 0.7,      # 预期调整参数
-        'phi_pi': 1.5,   # 泰勒规则通胀系数
+        'phi_pi': 1.5,   # 泰勒规则通���系数
         'phi_y': 0.5,    # 泰勒规则产出缺口系数
         'r_star': 0.02,  # 自然利率
         'g': 0.02,       # 长期增长率
@@ -150,7 +151,7 @@ def get_variable_explanation(variable):
     explanations = {
         '产出 (Y)': """
         当产出(Y)增加时：
-        - 利率(i)可能上升，因为更高的收入会增加货��需求。
+        - 利率(i)可能上升，因为更高的收入会增加货需求。
         - 价格水平(P)可能上升，因为需求增加。
         - 失业率(u)可能下降，因为更多的劳动力被雇佣。
         - 通胀率(π)可能上升，因为需求压力增加。
@@ -177,7 +178,7 @@ def get_variable_explanation(variable):
         """,
         '预期通胀率 (π_e)': """
         当预期通胀率(π_e)上升时：
-        - 利率(i)可能上升，因���人们要求更高的名义利率。
+        - 利率(i)可能上升，因人们要求更高的名义利率。
         - 价格水平(P)可能上升，因为工资和价格设定行为改变。
         - 实际产出(Y)可能短期内增加，但长期可能不变或下降。
         """,
@@ -205,9 +206,9 @@ def generate_detailed_explanation(base_results, policy_results, G_base, G_policy
     if abs(gdp_change) < 0.1:
         explanations.append("GDP基本保持不变，政策对总产出的影响较小。")
     elif gdp_change > 0:
-        explanations.append(f"GDP增加了{gdp_change:.2f}%。这可能是由于{'政府支出增加' if G_policy > G_base else '货币供给增加' if M_policy > M_base else '其他因素'}刺激了总需求。")
+        explanations.append(f"GDP增加了{gdp_change:.2f}%。这可能是由于{'�����支出加' if G_policy > G_base else '货币供给增加' if M_policy > M_base else '其他因素'}刺激了总需求。")
     else:
-        explanations.append(f"GDP减少了{abs(gdp_change):.2f}%。这可能是由于{'政府支出减少' if G_policy < G_base else '货币供给减少' if M_policy < M_base else '其他因素'}抑制了总需求。")
+        explanations.append(f"GDP减少了{abs(gdp_change):.2f}%。这可能是由于{'政府支出减少' if G_policy < G_base else '货币供给减少' if M_policy < M_base else '其他因素'}抑制了总求。")
 
     # 利率解释
     interest_change = policy_results['利率 (i)'][-1] - base_results['利率 (i)'][-1]
@@ -296,18 +297,25 @@ def policy_comparison_demo(params):
         i_policy = st.number_input("初始利率 (i)", value=0.05, step=0.01, format="%.2f", key="i_policy")
 
     if st.button("运行对比模拟"):
-        base_results = simulate_dynamic(params, G_base, T_base, M_base, i_base, 1.0, params['P'], params['pi_e'])
-        policy_results = simulate_dynamic(params, G_policy, T_policy, M_policy, i_policy, 1.0, params['P'], params['pi_e'])
+        base_params = copy.deepcopy(params)
+        policy_params = copy.deepcopy(params)
+        
+        base_results = simulate_dynamic(base_params, G_base, T_base, M_base, i_base, 1.0, base_params['P'], base_params['pi_e'])
+        policy_results = simulate_dynamic(policy_params, G_policy, T_policy, M_policy, i_policy, 1.0, policy_params['P'], policy_params['pi_e'])
 
         # 创建对比数据框
         comparison_df = pd.DataFrame({
-            '指标': ['GDP', '利率', '价格水平', '失业率', '通胀率'],
-            '基准情景': [base_results['产出 (Y)'][-1], base_results['利率 (i)'][-1], 
-                     base_results['价格水平 (P)'][-1], base_results['失业率 (u)'][-1], 
-                     base_results['通胀率 (π)'][-1]],
-            '政策情景': [policy_results['产出 (Y)'][-1], policy_results['利率 (i)'][-1], 
-                     policy_results['价格水平 (P)'][-1], policy_results['失业率 (u)'][-1], 
-                     policy_results['通胀率 (π)'][-1]]
+            '指标': ['初始GDP', '最终GDP', '初始利率', '最终利率', '初始价格水平', '最终价格水平', '初始失业率', '最终失业率', '初始通胀率', '最终通胀率'],
+            '基准情景': [base_results['产出 (Y)'][0], base_results['产出 (Y)'][-1], 
+                        base_results['利率 (i)'][0], base_results['利率 (i)'][-1], 
+                        base_results['价格水平 (P)'][0], base_results['价格水平 (P)'][-1], 
+                        base_results['失业率 (u)'][0], base_results['失业率 (u)'][-1], 
+                        base_results['通胀率 (π)'][0], base_results['通胀率 (π)'][-1]],
+            '政策情景': [policy_results['产出 (Y)'][0], policy_results['产出 (Y)'][-1], 
+                        policy_results['利率 (i)'][0], policy_results['利率 (i)'][-1], 
+                        policy_results['价格水平 (P)'][0], policy_results['价格水平 (P)'][-1], 
+                        policy_results['失业率 (u)'][0], policy_results['失业率 (u)'][-1], 
+                        policy_results['通胀率 (π)'][0], policy_results['通胀率 (π)'][-1]]
         })
 
         st.subheader("模拟结果对比")
@@ -473,7 +481,7 @@ elif menu == "模型说明":
 
     st.markdown("这是一个货币政策规则,描述了中央银行如何设定利率。i是名义利率,r*是自然利率,φ_π和φ_y分别是对通胀和产出缺口的反应系数。")
 
-    st.markdown("### 5. 长期增长方程:")
+    st.markdown("### 5. 长��增长方程:")
     st.latex(r'Y_{n,new} = Y_n(1 + g)')
 
     st.markdown("这个方程描述了潜在产出的长期增长,其中g是长期增长率。")
