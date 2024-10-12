@@ -25,7 +25,7 @@ def get_default_params():
         'P': 1,     # 初始价格水平
         'Yn': 1000, # 潜在产出
         'un': 0.05, # 自然失业率
-        'alpha': 2, # 奥肯系数
+        'alpha': 2, # 奥肯系��
         'beta': 0.5,# 菲利普斯曲线斜率
         'pi_e': 0.02,    # 初始预期通胀率
         'kappa': 0.05,   # 价格调整速度
@@ -150,7 +150,7 @@ def get_variable_explanation(variable):
     explanations = {
         '产出 (Y)': """
         当产出(Y)增加时：
-        - 利率(i)可能上升，因为更高的收入会增加货币需求。
+        - 利率(i)可能上升，因为更高的收入会增加货��需求。
         - 价格水平(P)可能上升，因为需求增加。
         - 失业率(u)可能下降，因为更多的劳动力被雇佣。
         - 通胀率(π)可能上升，因为需求压力增加。
@@ -177,7 +177,7 @@ def get_variable_explanation(variable):
         """,
         '预期通胀率 (π_e)': """
         当预期通胀率(π_e)上升时：
-        - 利率(i)可能上升，因为人们要求更高的名义利率。
+        - 利率(i)可能上升，因���人们要求更高的名义利率。
         - 价格水平(P)可能上升，因为工资和价格设定行为改变。
         - 实际产出(Y)可能短期内增加，但长期可能不变或下降。
         """,
@@ -196,6 +196,86 @@ def get_variable_explanation(variable):
         """
     }
     return explanations.get(variable, "没有该变量的具体解释。")
+
+def generate_detailed_explanation(base_results, policy_results, G_base, G_policy, T_base, T_policy, M_base, M_policy):
+    explanations = []
+    
+    # GDP解释
+    gdp_change = (policy_results['产出 (Y)'][-1] - base_results['产出 (Y)'][-1]) / base_results['产出 (Y)'][-1] * 100
+    if abs(gdp_change) < 0.1:
+        explanations.append("GDP基本保持不变，政策对总产出的影响较小。")
+    elif gdp_change > 0:
+        explanations.append(f"GDP增加了{gdp_change:.2f}%。这可能是由于{'政府支出增加' if G_policy > G_base else '货币供给增加' if M_policy > M_base else '其他因素'}刺激了总需求。")
+    else:
+        explanations.append(f"GDP减少了{abs(gdp_change):.2f}%。这可能是由于{'政府支出减少' if G_policy < G_base else '货币供给减少' if M_policy < M_base else '其他因素'}抑制了总需求。")
+
+    # 利率解释
+    interest_change = policy_results['利率 (i)'][-1] - base_results['利率 (i)'][-1]
+    if abs(interest_change) < 0.001:
+        explanations.append("利率基本保持稳定，说明货币市场的供需关系没有显著变化。")
+    elif interest_change > 0:
+        explanations.append(f"利率上升了{interest_change:.3f}个百分点。这可能是由于{'总需求增加导致货币需求上升' if gdp_change > 0 else '货币供给减少'}。")
+    else:
+        explanations.append(f"利率下降了{abs(interest_change):.3f}个百分点。这可能是由于{'总需求减少导致货币需求下降' if gdp_change < 0 else '货币供给增加'}。")
+
+    # 价格水平解释
+    price_change = (policy_results['价格水平 (P)'][-1] - base_results['价格水平 (P)'][-1]) / base_results['价格水平 (P)'][-1] * 100
+    if abs(price_change) < 0.1:
+        explanations.append("价格水平基本稳定，说明政策没有显著影响通胀或通缩。")
+    elif price_change > 0:
+        explanations.append(f"价格水平上升了{price_change:.2f}%。这表明{'总需求增加导致了轻微的通胀压力' if gdp_change > 0 else '成本推动型通胀可能发生'}。")
+    else:
+        explanations.append(f"价格水平下降了{abs(price_change):.2f}%。这表明{'总需求减少导致了轻微的通缩压力' if gdp_change < 0 else '生产效率提高或者原材料成本下降'}。")
+
+    # 失业率解释
+    unemployment_change = policy_results['失业率 (u)'][-1] - base_results['失业率 (u)'][-1]
+    if abs(unemployment_change) < 0.001:
+        explanations.append("失业率基本保持不变，就业市场相对稳定。")
+    elif unemployment_change > 0:
+        explanations.append(f"失业率上升了{unemployment_change:.3f}个百分点。这可能是由于{'经济增速放缓' if gdp_change < 0 else '结构性因素或摩擦性失业增加'}。")
+    else:
+        explanations.append(f"失业率下降了{abs(unemployment_change):.3f}个百分点。这表明{'经济增长创造了更多就业机会' if gdp_change > 0 else '劳动力市场结构得到改善'}。")
+
+    # 通胀率解释
+    inflation_change = policy_results['通胀率 (π)'][-1] - base_results['通胀率 (π)'][-1]
+    if abs(inflation_change) < 0.001:
+        explanations.append("通胀率基本保持稳定，物价变动不大。")
+    elif inflation_change > 0:
+        explanations.append(f"通胀率上升了{inflation_change:.3f}个百分点。这可能是由于{'总需求增加推高了物价' if gdp_change > 0 else '成本推动或者通胀预期上升'}。")
+    else:
+        explanations.append(f"通胀率下降了{abs(inflation_change):.3f}个百分点。这可能是由于{'总需求减少降低了物价压力' if gdp_change < 0 else '生产效率提高或者原材料成本下降'}。")
+
+    # 政策传导机制解释
+    if G_policy != G_base:
+        explanations.append(f"政府支出{'增加' if G_policy > G_base else '减少'}直接影响了IS曲线，导致其{'右移' if G_policy > G_base else '左移'}。")
+    if M_policy != M_base:
+        explanations.append(f"货币供给{'增加' if M_policy > M_base else '减少'}影响了LM曲线，导致其{'右移' if M_policy > M_base else '左移'}。")
+    if interest_change != 0:
+        explanations.append(f"利率变化可能影响国际资本流动，进而影响BP曲线。")
+
+    # 长期效应讨论
+    if gdp_change > 0:
+        explanations.append("长期来看，需要关注这种增长是否可持续，以及是否会带来通胀压力。")
+    elif gdp_change < 0:
+        explanations.append("长期来看，需要关注经济是否能够自我调节回到潜在产出水平。")
+    
+    if G_policy > G_base:
+        explanations.append("政府支出增加可能带来挤出效应，影响私人投资。同时需要关注财政可持续性问题。")
+    
+    if M_policy > M_base:
+        explanations.append("货币供给增加在长期可能导致通胀预期上升，影响价格稳定。")
+
+    # 政策建议
+    explanations.append("建议:")
+    if abs(gdp_change) > 2:
+        explanations.append("- 密切关注经济增长的可持续性和质量。")
+    if abs(inflation_change) > 0.02:
+        explanations.append("- 警惕通胀或通缩风险，必要时调整货币政策。")
+    if abs(unemployment_change) > 0.01:
+        explanations.append("- 关注就业市场变化，考虑实施相应的劳动力市场政策。")
+    explanations.append("- 持续监测各项经济指标，根据实际情况及时调整政策。")
+
+    return "\n".join(explanations)
 
 def policy_comparison_demo(params):
     st.subheader("政策对比演示")
@@ -219,6 +299,7 @@ def policy_comparison_demo(params):
         base_results = simulate_dynamic(params, G_base, T_base, M_base, i_base, 1.0, params['P'], params['pi_e'])
         policy_results = simulate_dynamic(params, G_policy, T_policy, M_policy, i_policy, 1.0, params['P'], params['pi_e'])
 
+        # 创建对比数据框
         comparison_df = pd.DataFrame({
             '指标': ['GDP', '利率', '价格水平', '失业率', '通胀率'],
             '基准情景': [base_results['产出 (Y)'][-1], base_results['利率 (i)'][-1], 
@@ -229,61 +310,32 @@ def policy_comparison_demo(params):
                      policy_results['通胀率 (π)'][-1]]
         })
 
+        st.subheader("模拟结果对比")
         st.table(comparison_df)
 
-        fig = go.Figure()
-        for indicator in ['产出 (Y)', '利率 (i)', '价格水平 (P)', '失业率 (u)', '通胀率 (π)']:
+        # 为每个指标创建单独的图表
+        indicators = ['产出 (Y)', '利率 (i)', '价格水平 (P)', '失业率 (u)', '通胀率 (π)']
+        for indicator in indicators:
+            fig = go.Figure()
             fig.add_trace(go.Scatter(x=list(range(len(base_results[indicator]))), 
                                      y=base_results[indicator], 
                                      mode='lines', 
-                                     name=f'基准 {indicator}'))
+                                     name='基准情景'))
             fig.add_trace(go.Scatter(x=list(range(len(policy_results[indicator]))), 
                                      y=policy_results[indicator], 
                                      mode='lines', 
-                                     name=f'政策 {indicator}'))
+                                     name='政策情景'))
+            fig.update_layout(title=f'{indicator}随时间的变化', xaxis_title='时间', yaxis_title=indicator)
+            st.plotly_chart(fig)
 
-        fig.update_layout(title='政策效果对比', xaxis_title='时间', yaxis_title='指标值')
-        st.plotly_chart(fig)
+        # 使用新的解释生成函数
+        detailed_explanation = generate_detailed_explanation(
+            base_results, policy_results, 
+            G_base, G_policy, T_base, T_policy, M_base, M_policy
+        )
 
-        st.markdown("""
-        ### 结果解释:
-        - **GDP变化**: 政策情景下GDP{gdp_change}了。这可能是由于{gdp_reason}。
-        - **利率变化**: 利率{interest_change}。这可能反映了{interest_reason}。
-        - **价格水平**: 价格水平{price_change}，表明{price_reason}。
-        - **失业率**: 失业率{unemployment_change}，这说明{unemployment_reason}。
-        - **通胀率**: 通胀率{inflation_change}，可能是因为{inflation_reason}。
-
-        ### 政策传导机制:
-        1. IS曲线: {is_effect}
-        2. LM曲线: {lm_effect}
-        3. BP曲线: {bp_effect}
-
-        ### 长期效应:
-        {long_term_effect}
-
-        ### 政策评估:
-        - 效果: {effectiveness}
-        - 潜在风险: {risks}
-        - 建议: {suggestions}
-        """.format(
-            gdp_change="增加" if policy_results['产出 (Y)'][-1] > base_results['产出 (Y)'][-1] else "减少",
-            gdp_reason="政府支出增加刺激了总需求" if G_policy > G_base else "其他因素影响",
-            interest_change="上升" if policy_results['利率 (i)'][-1] > base_results['利率 (i)'][-1] else "下降",
-            interest_reason="总需求变化影响了货币需求",
-            price_change="上升" if policy_results['价格水平 (P)'][-1] > base_results['价格水平 (P)'][-1] else "下降",
-            price_reason="总需求变化影响了价格水平",
-            unemployment_change="下降" if policy_results['失业率 (u)'][-1] < base_results['失业率 (u)'][-1] else "上升",
-            unemployment_reason="产出变化影响了就业情况",
-            inflation_change="上升" if policy_results['通胀率 (π)'][-1] > base_results['通胀率 (π)'][-1] else "下降",
-            inflation_reason="总需求变化影响了通胀压力",
-            is_effect="政府支出变化直接影响了总需求",
-            lm_effect="货币供给变化影响了货币市场均衡" if M_policy != M_base else "货币供给未变",
-            bp_effect="利率变化可能影响国际资本流动",
-            long_term_effect="需要考虑政策的长期可持续性和潜在的挤出效应",
-            effectiveness="政策在短期内成功刺激了经济增长" if policy_results['产出 (Y)'][-1] > base_results['产出 (Y)'][-1] else "政策效果不如预期",
-            risks="可能存在通胀压力增加或财政可持续性问题",
-            suggestions="建议密切监控经济指标，并根据实际情况及时调整政策"
-        ))
+        st.markdown("### 详细结果解释")
+        st.markdown(detailed_explanation)
 
 # 主应用界面
 st.title('中央银行政策影响模拟器')
@@ -372,6 +424,9 @@ if menu == "参数设置和模拟":
         st.rerun()
 
 elif menu == "政策对比演示":
+     # 参数设置
+    params = get_default_params()
+    
     policy_comparison_demo(params)
 
 elif menu == "模型说明":
