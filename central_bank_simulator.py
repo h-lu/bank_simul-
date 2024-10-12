@@ -3,7 +3,7 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import plotly.graph_objs as go
+import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 
 # 更新默认参数
@@ -160,7 +160,7 @@ def get_variable_explanation(variable):
         - 产出(Y)可能下降，因为投资和消费减少。
         - 汇率(E)可能升值，因为资本流入增加。
         - 价格水平(P)可能下降，因为总需求减少。
-        - 失业率(u)可能上升，因为经济活动减少。
+        - 失业率(u)可能上升���因为经济活动减少。
         """,
         '汇率 (E)': """
         当汇率(E)升值时：
@@ -261,27 +261,23 @@ if st.button('运行模拟'):
 
     # 为每个经济指标创建单独的图表
     for column in df_history.columns:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_history.index, y=df_history[column], mode='lines+markers', name=column))
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(df_history.index, df_history[column], marker='o')
         
-        fig.update_layout(
-            title=f'{column}随时间的变化',
-            xaxis_title='时期',
-            yaxis_title='数值',
-            height=400,  # 设置图表高度
-            width=600,   # 设置图表宽度
-        )
+        ax.set_title(f'{column}随时间的变化')
+        ax.set_xlabel('时期')
+        ax.set_ylabel('数值')
         
         # 添加网格线
-        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
+        ax.grid(True, linestyle='--', alpha=0.7)
         
         # 设置y轴的范围，使零点更明显
         y_min = min(0, df_history[column].min() * 1.1)
         y_max = max(0, df_history[column].max() * 1.1)
-        fig.update_yaxes(range=[y_min, y_max])
+        ax.set_ylim(y_min, y_max)
 
-        st.plotly_chart(fig)
+        # 在Streamlit中显示图表
+        st.pyplot(fig)
         
         # 添加变量解释
         st.markdown(f"### {column}的影响")
