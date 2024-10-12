@@ -6,6 +6,11 @@ import pandas as pd
 from scipy.optimize import fsolve
 import plotly.graph_objects as go
 import copy
+from openai import OpenAI
+import os
+
+# 设置 DeepSeek API
+client = OpenAI(api_key="sk-89633c366041484f91f993634c6e31ab", base_url="https://api.deepseek.com")
 
 # 更新默认参数
 @st.cache_data
@@ -179,9 +184,9 @@ def get_variable_explanation(variable):
         - 价格水平(P)可能下降，因为进口商品变得更便宜。
         - 通胀率(π)可能下降，因为进口通胀压力减小。
         """,
-        '价格水平 (P)': """
+        '价格水 (P)': """
         当价格水平(P)上升时：
-        - 产出(Y)可能下降，因为实际余额效应。
+        - 产出(Y)可能下降，因为实际余额应。
         - 利率(i)可能上升，因为货币需求增加。
         - 汇率(E)可能贬值，因为本国商品相对变贵。
         - 失业率(u)可能上升，因为实际工资下降导致劳动需求减少。
@@ -203,97 +208,68 @@ def get_variable_explanation(variable):
         - 利率(i)可能上升，因为中央银行可能采取紧缩性货币政策。
         - 汇率(E)可能贬值，因为本国货币购买力下降。
         - 失业率(u)可能短期内下降，但长期可能上升（菲利普斯曲线）。
-        - 预期通胀率(π_e)可能上升，因为人们调整对未来通胀的预期。
+        - 预期通胀率(π_e)可能上升，因为人们调整对未来通胀的预。
         """
     }
     return explanations.get(variable, "没有该变量的具体解释。")
 
-def generate_detailed_explanation(base_results, policy_results, G_base, G_policy, T_base, T_policy, M_base, M_policy):
-    explanations = []
-    
-    # GDP解释
-    gdp_change = (policy_results['产出 (Y)'][-1] - base_results['产出 (Y)'][-1]) / base_results['产出 (Y)'][-1] * 100
-    if abs(gdp_change) < 0.1:
-        explanations.append("GDP基本保持不变，政策对总产出的影响较小。")
-    elif gdp_change > 0:
-        explanations.append(f"GDP增加了{gdp_change:.2f}%。这可能是由于{'政府支出加' if G_policy > G_base else '货币供给增加' if M_policy > M_base else '其他因素'}刺激了总需求。")
-    else:
-        explanations.append(f"GDP减少了{abs(gdp_change):.2f}%。这可能是由于{'政府支出减少' if G_policy < G_base else '货币供给减少' if M_policy < M_base else '其他因素'}抑制了总求。")
+# 添加这个新函数来生成详细的提示词模板
+def create_detailed_prompt(results, G, T, M):
+    prompt = f"""
+    作为一位宏观经济学专家,请分析以下经济模拟结果,并提供详细解释:
 
-    # 利率解释
-    interest_change = policy_results['利率 (i)'][-1] - base_results['利率 (i)'][-1]
-    if abs(interest_change) < 0.001:
-        explanations.append("利率基本保持稳定，说明货币市场的供需关系没有显著变化。")
-    elif interest_change > 0:
-        explanations.append(f"利率上升了{interest_change:.3f}个百分点。这可能是由于{'总需求增加导致货币需求上升' if gdp_change > 0 else '货币供给减少'}。")
-    else:
-        explanations.append(f"利率下降了{abs(interest_change):.3f}个百分点。这可能是由于{'总需求减少导致货币需求下降' if gdp_change < 0 else '货币供给增加'}。")
+    政策参数:
+    - 政府支出(G): {G}
+    - 税收(T): {T}
+    - 货币供给(M): {M}
 
-    # 价格水���解释
-    price_change = (policy_results['价格水平 (P)'][-1] - base_results['价格水平 (P)'][-1]) / base_results['价格水平 (P)'][-1] * 100
-    if abs(price_change) < 0.1:
-        explanations.append("价格水平基本稳定，说明政策没有显著影响通胀通缩。")
-    elif price_change > 0:
-        explanations.append(f"价格水平上升了{price_change:.2f}%。这表明{'总需求增加导致了轻微的通胀压力' if gdp_change > 0 else '成本推动型通胀可能发生'}。")
-    else:
-        explanations.append(f"价格水平下降了{abs(price_change):.2f}%。这表明{'总需求减少导致了轻微的通缩压力' if gdp_change < 0 else '生产效率提高或者原材料成本下降'}。")
+    经济指标:
+    - GDP: 初始 {results['产出 (Y)'][0]:.2f}, 最终 {results['产出 (Y)'][-1]:.2f}
+    - 失业率: 初始 {results['失业率 (u)'][0]:.2f}, 最终 {results['失业率 (u)'][-1]:.2f}
+    - 通胀率: 初始 {results['通胀率 (π)'][0]:.2f}, 最终 {results['通胀率 (π)'][-1]:.2f}
+    - 利率: 初始 {results['利率 (i)'][0]:.2f}, 最终 {results['利率 (i)'][-1]:.2f}
+    - 价格水平: 初始 {results['价格水平 (P)'][0]:.2f}, 最终 {results['价格水平 (P)'][-1]:.2f}
 
-    # 失业率解释
-    unemployment_change = policy_results['失业率 (u)'][-1] - base_results['失业率 (u)'][-1]
-    if abs(unemployment_change) < 0.001:
-        explanations.append("失业率基本保持不变，就业市场相对稳定。")
-    elif unemployment_change > 0:
-        explanations.append(f"失业率上升了{unemployment_change:.3f}个百分点。这可能是由于{'经济增速放缓' if gdp_change < 0 else '结构性因素或摩擦性失业增加'}。")
-    else:
-        explanations.append(f"失业率下降了{abs(unemployment_change):.3f}个百分点。这表明{'经济增长创造了更多就业机会' if gdp_change > 0 else '劳动力市场结构得到改善'}。")
+    请提供以下分析:
+    1. 经济表现概述: 简要说明模拟期间经济的整体表现。
+    2. 各指标分析: 
+       a) 详细解释GDP、失业率、通胀率、利率和价格水平的变化趋势。
+       b) 分析这些指标之间的相互作用和可能的因果关系。
+    3. 政策效果评估: 评估给定的政府支出、税收和货币供给水平对经济的影响。
+    4. 短期vs长期影响: 讨论观察到的经济变化在短期和长期可能产生的不同效果。
+    5. 潜在风险: 指出当前经济状况可能带来的潜在风险或负面影响。
+    6. 政策建议: 
+       a) 基于分析结果,提出可能的政策调整建议。
+       b) 如果需要,建议配套措施以改善经济表现或缓解潜在问题。
+    7. 总结: 简要总结分析结果和主要观点。
 
-    # 通胀率解释
-    inflation_change = policy_results['通胀率 (π)'][-1] - base_results['通胀率 (π)'][-1]
-    if abs(inflation_change) < 0.001:
-        explanations.append("通胀率基本保持稳定，物价变动不大。")
-    elif inflation_change > 0:
-        explanations.append(f"通胀率上升了{inflation_change:.3f}个百分点。这可能是由于{'总需求增加推高了物价' if gdp_change > 0 else '成本推动或者通胀预期上升'}。")
-    else:
-        explanations.append(f"通胀率下降了{abs(inflation_change):.3f}个百分点。这可能是由于{'总需求减少降低了物价压力' if gdp_change < 0 else '生产效率提高或者原材料成本下降'}。")
+    请确保您的分析全面、深入,并考虑到宏观经济学的各个方面。
+    """
+    return prompt
 
-    # 政策传导机制解释
-    if G_policy != G_base:
-        explanations.append(f"政府支出{'增加' if G_policy > G_base else '减少'}直接影响了IS曲线，导致其{'右移' if G_policy > G_base else '左移'}。")
-    if M_policy != M_base:
-        explanations.append(f"货币供给{'增加' if M_policy > M_base else '减少'}影响了LM曲线，导致其{'右移' if M_policy > M_base else '左移'}。")
-    if interest_change != 0:
-        explanations.append(f"利率变化可能影响国际资本流动，进而影响BP曲线。")
+# 修改generate_ai_explanation函数以适应新的prompt格式
+def generate_ai_explanation(results, G, T, M):
+    prompt = create_detailed_prompt(results, G, T, M)
 
-    # 长期效应讨论
-    if gdp_change > 0:
-        explanations.append("长期来看，需要关注这种增长是否可持续，以及是否会带来通胀压力。")
-    elif gdp_change < 0:
-        explanations.append("长期来看，需要关注经济是否能够自我调节回到潜在产出水平。")
-    
-    if G_policy > G_base:
-        explanations.append("政府支出增加可能带来挤出效应，影响私人投资。同时需要关注财政可持续性问题。")
-    
-    if M_policy > M_base:
-        explanations.append("货币供给增加在长期可能导致通胀预期上升，影响价格稳定。")
-
-    # 政策建议
-    explanations.append("建议:")
-    if abs(gdp_change) > 2:
-        explanations.append("- 密切关注经济长的可持续性和质量。")
-    if abs(inflation_change) > 0.02:
-        explanations.append("- 警惕通胀或通缩风险，必要时调整货币政策。")
-    if abs(unemployment_change) > 0.01:
-        explanations.append("- 关就业市场变化，考虑实施相应的劳动力市场政策。")
-    explanations.append("- 持续监测各项经济指标，根据实际情况及时调整政策。")
-
-    return "\n".join(explanations)
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "你是一位资深的宏观经济学专家,擅长分析复杂的经济政策影响。请提供深入、全面且结构清晰的分析。"},
+                {"role": "user", "content": prompt}
+            ],
+            stream=True
+        )
+        return response
+    except Exception as e:
+        return f"无法生成AI解释: {str(e)}"
 
 def policy_comparison_demo(params):
     st.subheader("政策对比演示")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**基准景**")
+        st.markdown("**基准情景**")
         G_base = st.number_input("政府支出 (G)", value=float(params['G']), step=10.0, key="G_base")
         T_base = st.number_input("税收 (T)", value=float(params['T']), step=10.0, key="T_base")
         M_base = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_base")
@@ -306,7 +282,7 @@ def policy_comparison_demo(params):
         M_policy = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_policy")
         i_policy = st.number_input("初始利率 (i)", value=0.05, step=0.01, format="%.2f", key="i_policy")
 
-    if st.button("运行对比模拟"):
+    if st.button("运行对比模拟并生成AI解释"):
         base_params = copy.deepcopy(params)
         policy_params = copy.deepcopy(params)
         
@@ -346,15 +322,6 @@ def policy_comparison_demo(params):
             fig.update_layout(title=f'{indicator}随时间的变化', xaxis_title='时间', yaxis_title=indicator)
             st.plotly_chart(fig)
 
-        # 使用新的解释生成函数
-        detailed_explanation = generate_detailed_explanation(
-            base_results, policy_results, 
-            G_base, G_policy, T_base, T_policy, M_base, M_policy
-        )
-
-        st.markdown("### 详细结果解释")
-        st.markdown(detailed_explanation)
-
         # 添加失业率解释
         st.markdown("### 失业率说明")
         st.markdown("""
@@ -363,6 +330,20 @@ def policy_comparison_demo(params):
         政策的影响，但仍然是对现实的简化表示。在解释结果时，我们应该更多地关注失业率的变化趋势，
         而不是具体的数值。
         """)
+
+        # 生成AI解释
+        st.subheader("AI生成的结果解释")
+        explanation_placeholder = st.empty()
+        full_response = ""
+        with st.spinner("正在生成AI解释..."):
+            stream = generate_ai_explanation(
+                base_results, G_base, T_base, M_base
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    explanation_placeholder.markdown(full_response + "▌")
+        explanation_placeholder.markdown(full_response)
 
 # 主应用界面
 st.title('中央银行政策影响模拟器')
@@ -404,7 +385,7 @@ if menu == "参数设置和模拟":
             params['I1'] = st.number_input('投资利率敏感度 (I1)', value=params['I1'], step=0.1, format="%.2f")
         with col2:
             params['NX0'] = st.number_input('自主净出口 (NX0)', value=float(params['NX0']), step=10.0, format="%.1f")
-            params['NX1'] = st.number_input('净出口汇率敏感度 (NX1)', value=params['NX1'], step=0.1, format="%.2f")
+            params['NX1'] = st.number_input('出口汇率敏感度 (NX1)', value=params['NX1'], step=0.1, format="%.2f")
             params['L0'] = st.number_input('货币需求收入弹性 (L0)', value=params['L0'], step=0.1, format="%.2f")
             params['L1'] = st.number_input('货币需求利率弹性 (L1)', value=params['L1'], step=0.1, format="%.2f")
         with col3:
@@ -414,7 +395,7 @@ if menu == "参数设置和模拟":
             params['phi_y'] = st.number_input('泰勒规则产出缺口系数 (φ_y)', value=params['phi_y'], step=0.1, format="%.2f")
 
     # 执行模拟
-    if st.button('运行模拟'):
+    if st.button('运行模拟并生成AI解释'):
         history = simulate_dynamic(
             params=params,
             G=G,
@@ -433,18 +414,56 @@ if menu == "参数设置和模拟":
         # 转换为数据框
         df_history = pd.DataFrame(history)
 
-        # 为每个经济指标创建图表
-        for column in df_history.columns:
-            st.subheader(f'{column}随时间的变化')
-            st.line_chart(df_history[column])
-            
-            # 添加变量解释
-            st.markdown(f"### {column}的影响")
-            st.markdown(get_variable_explanation(column))
+        # 创建结果数据框
+        results_df = pd.DataFrame({
+            '指标': ['初始GDP', '最终GDP', '初始利率', '最终利率', '初始价格水平', '最终价格水平', '初始失业率', '最终失业率', '初始通胀率', '最终通胀率'],
+            '值': [df_history['产出 (Y)'].iloc[0], df_history['产出 (Y)'].iloc[-1], 
+                  df_history['利率 (i)'].iloc[0], df_history['利率 (i)'].iloc[-1], 
+                  df_history['价格水平 (P)'].iloc[0], df_history['价格水平 (P)'].iloc[-1], 
+                  df_history['失业率 (u)'].iloc[0], df_history['失业率 (u)'].iloc[-1], 
+                  df_history['通胀率 (π)'].iloc[0], df_history['通胀率 (π)'].iloc[-1]]
+        })
 
-        # 显示数据表格
-        st.subheader("模拟结果数据")
+        st.subheader("模拟结果概览")
+        st.table(results_df)
+
+        # 为每个指标创建单独的图表
+        indicators = ['产出 (Y)', '利率 (i)', '价格水平 (P)', '失业率 (u)', '通胀率 (π)']
+        for indicator in indicators:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=list(range(len(df_history[indicator]))), 
+                                     y=df_history[indicator], 
+                                     mode='lines', 
+                                     name='模拟结果'))
+            fig.update_layout(title=f'{indicator}随时间的变化', xaxis_title='时间', yaxis_title=indicator)
+            st.plotly_chart(fig)
+
+        # 添加失业率解释
+        st.markdown("### 失业率说明")
+        st.markdown("""
+        注意：模型计算的失业率可能会出现非常低的值，这是由于模型的简化性质和长期增长假设导致的。
+        在实际经济中，失业率通常不会降到非常低的水平。这个结果提醒我们，模型虽然有助于理解经济
+        政策的影响，但仍然是对现实的简化表示。在解释结果时，我们应该更多地关注失业率的变化趋势，
+        而不是具体的数值。
+        """)
+
+        # 显示详细数据表格
+        st.subheader("详细模拟结果数据")
         st.dataframe(df_history)
+
+        # 生成AI解释
+        st.subheader("AI生成的结果解释")
+        explanation_placeholder = st.empty()
+        full_response = ""
+        with st.spinner("正在生成AI解释..."):
+            stream = generate_ai_explanation(
+                history, G, T, initial_money_supply
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    explanation_placeholder.markdown(full_response + "▌")
+        explanation_placeholder.markdown(full_response)
 
     # 添加重置按钮
     if st.button("重置模型"):
@@ -493,7 +512,7 @@ elif menu == "模型说明":
     st.markdown("### 3. 预期形成方程:")
     st.latex(r'\pi^e_{new} = \rho \pi^e + (1 - \rho)\pi')
 
-    st.markdown("这个方程描述了人们如何形成对未来通胀的预期。新的预期通胀率(π^e_new)是当前预期(π^e)和实际通胀率(π)的加权平均。ρ是预期调整参数。")
+    st.markdown("这个方程描述了人们如何形成对未来通胀的预期。新的预期胀率(π^e_new)是当前预期(π^e)和实际通胀率(π)的加权平均。ρ是预期调整参数。")
 
     st.markdown("### 4. 泰勒规则:")
     st.latex(r'i = r^* + \phi_\pi(\pi - 0.02) + \phi_y\frac{Y - Y_n}{Y_n}')
@@ -516,14 +535,14 @@ elif menu == "模型说明":
     st.markdown("这个曲线描述了通胀率与产出缺口之间的关系。β是菲利普斯曲线的斜率。")
 
     st.markdown("""
-    这些模型共同构成了一个动态的宏观经济系统,能够模拟经济对各种政策和冲击的反应。模型考虑了产出、利率、汇率、价格水平、通胀预期、失业率等关键经济变量之间的相互作用。
+    这些模型共同构成了一个动态的宏观经济系统,能够模拟经济对各种政策和冲击的反应。模型考虑了产出、利率、汇、价格水平、胀预期、失业率等关键经济变量之间的相互作用。
 
     ### 主要特点:
     - 考虑了开放经济（包含汇率和国际贸易）
-    - 包含价格粘性和通胀预期的动态调整
+    - 包含价格粘性通胀预期的动态调整
     - 纳入了货币政策规则（泰勒规则）
     - 考虑了长期经济增长
     - 包含了劳动市场（通过奥肯法则和菲利普斯曲线）
 
-    通过调整不同的参数,你可以观察经济如何对不同的政策和冲击做出反应。这有助于理解宏观经济政策的效果和经济系统的动态特性。
+    通过调整不同的参数,你可以观察经济如何对不同的政策和冲击做出反应。这有助于理解宏观经济政策的效果和经济系统的动态特性
     """)
