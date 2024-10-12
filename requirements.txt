@@ -2,6 +2,7 @@ streamlit
 numpy
 pandas
 scipy
+plotly
 
 
 

@@ -4,6 +4,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from scipy.optimize import fsolve
+import plotly.graph_objects as go
 
 # 更新默认参数
 @st.cache_data
@@ -196,154 +197,251 @@ def get_variable_explanation(variable):
     }
     return explanations.get(variable, "没有该变量的具体解释。")
 
-# Streamlit 应用界面
+def policy_comparison_demo(params):
+    st.subheader("政策对比演示")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**基准情景**")
+        G_base = st.number_input("政府支出 (G)", value=float(params['G']), step=10.0, key="G_base")
+        T_base = st.number_input("税收 (T)", value=float(params['T']), step=10.0, key="T_base")
+        M_base = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_base")
+        i_base = st.number_input("初始利率 (i)", value=0.05, step=0.01, format="%.2f", key="i_base")
+
+    with col2:
+        st.markdown("**政策情景**")
+        G_policy = st.number_input("政府支出 (G)", value=float(params['G'])*1.2, step=10.0, key="G_policy")
+        T_policy = st.number_input("税收 (T)", value=float(params['T']), step=10.0, key="T_policy")
+        M_policy = st.number_input("货币供给 (M)", value=float(params['M']), step=100.0, key="M_policy")
+        i_policy = st.number_input("初始利率 (i)", value=0.05, step=0.01, format="%.2f", key="i_policy")
+
+    if st.button("运行对比模拟"):
+        base_results = simulate_dynamic(params, G_base, T_base, M_base, i_base, 1.0, params['P'], params['pi_e'])
+        policy_results = simulate_dynamic(params, G_policy, T_policy, M_policy, i_policy, 1.0, params['P'], params['pi_e'])
+
+        comparison_df = pd.DataFrame({
+            '指标': ['GDP', '利率', '价格水平', '失业率', '通胀率'],
+            '基准情景': [base_results['产出 (Y)'][-1], base_results['利率 (i)'][-1], 
+                     base_results['价格水平 (P)'][-1], base_results['失业率 (u)'][-1], 
+                     base_results['通胀率 (π)'][-1]],
+            '政策情景': [policy_results['产出 (Y)'][-1], policy_results['利率 (i)'][-1], 
+                     policy_results['价格水平 (P)'][-1], policy_results['失业率 (u)'][-1], 
+                     policy_results['通胀率 (π)'][-1]]
+        })
+
+        st.table(comparison_df)
+
+        fig = go.Figure()
+        for indicator in ['产出 (Y)', '利率 (i)', '价格水平 (P)', '失业率 (u)', '通胀率 (π)']:
+            fig.add_trace(go.Scatter(x=list(range(len(base_results[indicator]))), 
+                                     y=base_results[indicator], 
+                                     mode='lines', 
+                                     name=f'基准 {indicator}'))
+            fig.add_trace(go.Scatter(x=list(range(len(policy_results[indicator]))), 
+                                     y=policy_results[indicator], 
+                                     mode='lines', 
+                                     name=f'政策 {indicator}'))
+
+        fig.update_layout(title='政策效果对比', xaxis_title='时间', yaxis_title='指标值')
+        st.plotly_chart(fig)
+
+        st.markdown("""
+        ### 结果解释:
+        - **GDP变化**: 政策情景下GDP{gdp_change}了。这可能是由于{gdp_reason}。
+        - **利率变化**: 利率{interest_change}。这可能反映了{interest_reason}。
+        - **价格水平**: 价格水平{price_change}，表明{price_reason}。
+        - **失业率**: 失业率{unemployment_change}，这说明{unemployment_reason}。
+        - **通胀率**: 通胀率{inflation_change}，可能是因为{inflation_reason}。
+
+        ### 政策传导机制:
+        1. IS曲线: {is_effect}
+        2. LM曲线: {lm_effect}
+        3. BP曲线: {bp_effect}
+
+        ### 长期效应:
+        {long_term_effect}
+
+        ### 政策评估:
+        - 效果: {effectiveness}
+        - 潜在风险: {risks}
+        - 建议: {suggestions}
+        """.format(
+            gdp_change="增加" if policy_results['产出 (Y)'][-1] > base_results['产出 (Y)'][-1] else "减少",
+            gdp_reason="政府支出增加刺激了总需求" if G_policy > G_base else "其他因素影响",
+            interest_change="上升" if policy_results['利率 (i)'][-1] > base_results['利率 (i)'][-1] else "下降",
+            interest_reason="总需求变化影响了货币需求",
+            price_change="上升" if policy_results['价格水平 (P)'][-1] > base_results['价格水平 (P)'][-1] else "下降",
+            price_reason="总需求变化影响了价格水平",
+            unemployment_change="下降" if policy_results['失业率 (u)'][-1] < base_results['失业率 (u)'][-1] else "上升",
+            unemployment_reason="产出变化影响了就业情况",
+            inflation_change="上升" if policy_results['通胀率 (π)'][-1] > base_results['通胀率 (π)'][-1] else "下降",
+            inflation_reason="总需求变化影响了通胀压力",
+            is_effect="政府支出变化直接影响了总需求",
+            lm_effect="货币供给变化影响了货币市场均衡" if M_policy != M_base else "货币供给未变",
+            bp_effect="利率变化可能影响国际资本流动",
+            long_term_effect="需要考虑政策的长期可持续性和潜在的挤出效应",
+            effectiveness="政策在短期内成功刺激了经济增长" if policy_results['产出 (Y)'][-1] > base_results['产出 (Y)'][-1] else "政策效果不如预期",
+            risks="可能存在通胀压力增加或财政可持续性问题",
+            suggestions="建议密切监控经济指标，并根据实际情况及时调整政策"
+        ))
+
+# 主应用界面
 st.title('中央银行政策影响模拟器')
 
-# 参数设置
-params = get_default_params()
+# 创建侧边栏菜单
+menu = st.sidebar.selectbox(
+    "选择功能",
+    ("参数设置和模拟", "政策对比演示", "模型说明")
+)
 
-# 用户输入
-col1, col2, col3 = st.columns(3)
+if menu == "参数设置和模拟":
+    # 参数设置
+    params = get_default_params()
 
-with col1:
-    G = st.number_input('政府支出 (G)', value=float(params['G']), step=10.0, format="%.1f")
-    T = st.number_input('税收 (T)', value=float(params['T']), step=10.0, format="%.1f")
-    initial_money_supply = st.number_input('初始货币供给 (M)', value=float(params['M']), step=100.0, format="%.1f")
-
-with col2:
-    initial_interest_rate = st.number_input('初始利率 (i)', value=0.05, step=0.01, format="%.2f")
-    exchange_rate_option = st.selectbox('汇率制度', ['内生', '外生'])
-    E = st.number_input('外生汇率 (如适用)', value=1.0, step=0.1, format="%.1f") if exchange_rate_option == '外生' else 1.0
-
-with col3:
-    shock_type = st.selectbox('冲击类型', ['无冲击', '技术冲击', '需求冲击', '货币政策冲击'])
-    shock_value = st.number_input('冲击幅度 (%)', value=0.0, step=1.0, format="%.1f") / 100 if shock_type != '无冲击' else 0.0
-
-# 高级参数设置
-with st.expander("高级参数设置"):
+    # 用户输入
     col1, col2, col3 = st.columns(3)
+
     with col1:
-        params['C0'] = st.number_input('自主消费 (C0)', value=float(params['C0']), step=10.0, format="%.1f")
-        params['C1'] = st.number_input('边际消费倾向 (C1)', value=params['C1'], step=0.1, format="%.2f")
-        params['I0'] = st.number_input('自主投资 (I0)', value=float(params['I0']), step=10.0, format="%.1f")
-        params['I1'] = st.number_input('投资利率敏感度 (I1)', value=params['I1'], step=0.1, format="%.2f")
+        G = st.number_input('政府支出 (G)', value=float(params['G']), step=10.0, format="%.1f")
+        T = st.number_input('税收 (T)', value=float(params['T']), step=10.0, format="%.1f")
+        initial_money_supply = st.number_input('初始货币供给 (M)', value=float(params['M']), step=100.0, format="%.1f")
+
     with col2:
-        params['NX0'] = st.number_input('自主净出口 (NX0)', value=float(params['NX0']), step=10.0, format="%.1f")
-        params['NX1'] = st.number_input('净出口汇率敏感度 (NX1)', value=params['NX1'], step=0.1, format="%.2f")
-        params['L0'] = st.number_input('货币需求收入弹性 (L0)', value=params['L0'], step=0.1, format="%.2f")
-        params['L1'] = st.number_input('货币需求利率弹性 (L1)', value=params['L1'], step=0.1, format="%.2f")
+        initial_interest_rate = st.number_input('初始利率 (i)', value=0.05, step=0.01, format="%.2f")
+        exchange_rate_option = st.selectbox('汇率制度', ['内生', '外生'])
+        E = st.number_input('外生汇率 (如适用)', value=1.0, step=0.1, format="%.1f") if exchange_rate_option == '外生' else 1.0
+
     with col3:
-        params['kappa'] = st.number_input('价格调整速度 (κ)', value=params['kappa'], step=0.01, format="%.2f")
-        params['rho'] = st.number_input('预期调整参数 (ρ)', value=params['rho'], step=0.1, format="%.2f")
-        params['phi_pi'] = st.number_input('泰勒规则通胀系数 (φ_π)', value=params['phi_pi'], step=0.1, format="%.2f")
-        params['phi_y'] = st.number_input('泰勒规则产出缺口系数 (φ_y)', value=params['phi_y'], step=0.1, format="%.2f")
+        shock_type = st.selectbox('冲击类型', ['无冲击', '技术冲击', '需求冲击', '货币政策冲击'])
+        shock_value = st.number_input('冲击幅度 (%)', value=0.0, step=1.0, format="%.1f") / 100 if shock_type != '无冲击' else 0.0
 
-# 执行模拟
-if st.button('运行模拟'):
-    history = simulate_dynamic(
-        params=params,
-        G=G,
-        T=T,
-        M_initial=initial_money_supply,
-        i_initial=initial_interest_rate,
-        E_initial=E if exchange_rate_option == '外生' else 1.0,
-        P_initial=params['P'],
-        pi_e_initial=params['pi_e'],
-        E_external=E if exchange_rate_option == '外生' else None,
-        shock_type=shock_type if shock_type != '无冲击' else None,
-        shock_value=shock_value,
-        periods=20
-    )
+    # 高级参数设置
+    with st.expander("高级参数设置"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            params['C0'] = st.number_input('自主消费 (C0)', value=float(params['C0']), step=10.0, format="%.1f")
+            params['C1'] = st.number_input('边际消费倾向 (C1)', value=params['C1'], step=0.1, format="%.2f")
+            params['I0'] = st.number_input('自主投资 (I0)', value=float(params['I0']), step=10.0, format="%.1f")
+            params['I1'] = st.number_input('投资利率敏感度 (I1)', value=params['I1'], step=0.1, format="%.2f")
+        with col2:
+            params['NX0'] = st.number_input('自主净出口 (NX0)', value=float(params['NX0']), step=10.0, format="%.1f")
+            params['NX1'] = st.number_input('净出口汇率敏感度 (NX1)', value=params['NX1'], step=0.1, format="%.2f")
+            params['L0'] = st.number_input('货币需求收入弹性 (L0)', value=params['L0'], step=0.1, format="%.2f")
+            params['L1'] = st.number_input('货币需求利率弹性 (L1)', value=params['L1'], step=0.1, format="%.2f")
+        with col3:
+            params['kappa'] = st.number_input('价格调整速度 (κ)', value=params['kappa'], step=0.01, format="%.2f")
+            params['rho'] = st.number_input('预期调整参数 (ρ)', value=params['rho'], step=0.1, format="%.2f")
+            params['phi_pi'] = st.number_input('泰勒规则通胀系数 (φ_π)', value=params['phi_pi'], step=0.1, format="%.2f")
+            params['phi_y'] = st.number_input('泰勒规则产出缺口系数 (φ_y)', value=params['phi_y'], step=0.1, format="%.2f")
 
-    # 转换为数据框
-    df_history = pd.DataFrame(history)
+    # 执行模拟
+    if st.button('运行模拟'):
+        history = simulate_dynamic(
+            params=params,
+            G=G,
+            T=T,
+            M_initial=initial_money_supply,
+            i_initial=initial_interest_rate,
+            E_initial=E if exchange_rate_option == '外生' else 1.0,
+            P_initial=params['P'],
+            pi_e_initial=params['pi_e'],
+            E_external=E if exchange_rate_option == '外生' else None,
+            shock_type=shock_type if shock_type != '无冲击' else None,
+            shock_value=shock_value,
+            periods=20
+        )
 
-    # 为每个经济指标创建单独的图表
-    for column in df_history.columns:
-        st.subheader(f'{column}随时间的变化')
-        st.line_chart(df_history[column])
-        
-        # 添加变量解释
-        st.markdown(f"### {column}的影响")
-        st.markdown(get_variable_explanation(column))
+        # 转换为数据框
+        df_history = pd.DataFrame(history)
 
-    # 显示数据表格
-    st.subheader("模拟结果数据")
-    st.dataframe(df_history)
+        # 为每个经济指标创建单独的图表
+        for column in df_history.columns:
+            st.subheader(f'{column}随时间的变化')
+            st.line_chart(df_history[column])
+            
+            # 添加变量解释
+            st.markdown(f"### {column}的影响")
+            st.markdown(get_variable_explanation(column))
 
-# 添加重置按钮
-if st.button("重置模型"):
-    st.rerun()
+        # 显示数据表格
+        st.subheader("模拟结果数据")
+        st.dataframe(df_history)
 
-# 在 Streamlit 应用界面部分的末尾添加以下内容
+    # 添加重置按钮
+    if st.button("重置模型"):
+        st.rerun()
 
-st.markdown("## 模型说明")
+elif menu == "政策对比演示":
+    policy_comparison_demo(params)
 
-st.markdown("这个中央银行政策影响模拟器基于多个宏观经济模型,包括IS-LM-BP模型、菲利普斯曲线、奥肯法则等。下面是对各个模型的详细解释:")
+elif menu == "模型说明":
+    st.markdown("## 模型说明")
 
-st.markdown("### 1. IS-LM-BP 模型")
+    st.markdown("这个中央银行政策影响模拟器基于多个宏观经济模型,包括IS-LM-BP模型、菲利普斯曲线、奥肯法则等。下面是对各个模型的详细解释:")
 
-st.markdown("#### IS 曲线(投资-储蓄均衡):")
-st.latex(r'''
-\begin{align*}
-Y &= C + I + G + NX \\
-C &= C_0 + C_1(Y - T) \\
-I &= I_0 - I_1i \\
-NX &= NX_0 - NX_1E
-\end{align*}
-''')
+    st.markdown("### 1. IS-LM-BP 模型")
 
-st.markdown("这个模型描述了商品市场的均衡。Y是总产出,C是消费,I是投资,G是政府支出,NX是净出口。消费取决于可支配收入(Y-T),投资受利率(i)影响,净出口受汇率(E)影响。")
+    st.markdown("#### IS 曲线(投资-储蓄均衡):")
+    st.latex(r'''
+    \begin{align*}
+    Y &= C + I + G + NX \\
+    C &= C_0 + C_1(Y - T) \\
+    I &= I_0 - I_1i \\
+    NX &= NX_0 - NX_1E
+    \end{align*}
+    ''')
 
-st.markdown("#### LM 曲线(流动性偏好-货币供给均衡):")
-st.latex(r'\frac{M}{P} = L_0Y - L_1i + L_2E')
+    st.markdown("这个模型描述了商品市场的均衡。Y是总产出,C是消费,I是投资,G是政府支出,NX是净出口。消费取决于可支配收入(Y-T),投资受利率(i)影响,净出口受汇率(E)影响。")
 
-st.markdown("这描述了货币市场的均衡。M是货币供给,P是价格水平。货币需求取决于收入(Y),利率(i)和汇率(E)。")
+    st.markdown("#### LM 曲线(流动性偏好-货币供给均衡):")
+    st.latex(r'\frac{M}{P} = L_0Y - L_1i + L_2E')
 
-st.markdown("#### BP 曲线(国际收支平衡):")
-st.latex(r'i = i_{foreign} + \frac{E_{expected} - E}{E}')
+    st.markdown("这描述了货币市场的均衡。M是货币供给,P是价格水平。货币需求取决于收入(Y),利率(i)和汇率(E)。")
 
-st.markdown("这是未覆盖利率平价条件,描述了国际资本流动的均衡。本国利率(i)等于国外利率(i_foreign)加上预期汇率变化。")
+    st.markdown("#### BP 曲线(国际收支平衡):")
+    st.latex(r'i = i_{foreign} + \frac{E_{expected} - E}{E}')
 
-st.markdown("### 2. 价格调整方程:")
-st.latex(r'P_{new} = P \left(1 + \kappa \frac{Y - Y_n}{Y_n}\right)')
+    st.markdown("这是未覆盖利率平价条件,描述了国际资本流动的均衡。本国利率(i)等于国外利率(i_foreign)加上预期汇率变化。")
 
-st.markdown("这个方程描述了价格如何随时间调整。当实际产出(Y)高于潜在产出(Y_n)时,价格上升;反之则下降。κ是价格调整速度。")
+    st.markdown("### 2. 价格调整方程:")
+    st.latex(r'P_{new} = P \left(1 + \kappa \frac{Y - Y_n}{Y_n}\right)')
 
-st.markdown("### 3. 预期形成方程:")
-st.latex(r'\pi^e_{new} = \rho \pi^e + (1 - \rho)\pi')
+    st.markdown("这个方程描述了价格如何随时间调整。当实际产出(Y)高于潜在产出(Y_n)时,价格上升;反之则下降。κ是价格调整速度。")
 
-st.markdown("这个方程描述了人们如何形成对未来通胀的预期。新的预期通胀率(π^e_new)是当前预期(π^e)和实际通胀率(π)的加权平均。ρ是预期调整参数。")
+    st.markdown("### 3. 预期形成方程:")
+    st.latex(r'\pi^e_{new} = \rho \pi^e + (1 - \rho)\pi')
 
-st.markdown("### 4. 泰勒规则:")
-st.latex(r'i = r^* + \phi_\pi(\pi - 0.02) + \phi_y\frac{Y - Y_n}{Y_n}')
+    st.markdown("这个方程描述了人们如何形成对未来通胀的预期。新的预期通胀率(π^e_new)是当前预期(π^e)和实际通胀率(π)的加权平均。ρ是预期调整参数。")
 
-st.markdown("这是一个货币政策规则,描述了中央银行如何设定利率。i是名义利率,r*是自然利率,φ_π和φ_y分别是对通胀和产出缺口的反应系数。")
+    st.markdown("### 4. 泰勒规则:")
+    st.latex(r'i = r^* + \phi_\pi(\pi - 0.02) + \phi_y\frac{Y - Y_n}{Y_n}')
 
-st.markdown("### 5. 长期增长方程:")
-st.latex(r'Y_{n,new} = Y_n(1 + g)')
+    st.markdown("这是一个货币政策规则,描述了中央银行如何设定利率。i是名义利率,r*是自然利率,φ_π和φ_y分别是对通胀和产出缺口的反应系数。")
 
-st.markdown("这个方程描述了潜在产出的长期增长,其中g是长期增长率。")
+    st.markdown("### 5. 长期增长方程:")
+    st.latex(r'Y_{n,new} = Y_n(1 + g)')
 
-st.markdown("### 6. 奥肯法则:")
-st.latex(r'u = u_n - \alpha\frac{Y - Y_n}{Y_n}')
+    st.markdown("这个方程描述了潜在产出的长期增长,其中g是长期增长率。")
 
-st.markdown("这个法则描述了失业率(u)与产出缺口之间的关系。u_n是自然失业率,α是奥肯系数。")
+    st.markdown("### 6. 奥肯法则:")
+    st.latex(r'u = u_n - \alpha\frac{Y - Y_n}{Y_n}')
 
-st.markdown("### 7. 菲利普斯曲线:")
-st.latex(r'\pi = \pi^e + \beta\frac{Y - Y_n}{Y_n}')
+    st.markdown("这个法则描述了失业率(u)与产出缺口之间的关系。u_n是自然失业率,α是奥肯系数。")
 
-st.markdown("这个曲线描述了通胀率与产出缺口之间的关系。β是菲利普斯曲线的斜率。")
+    st.markdown("### 7. 菲利普斯曲线:")
+    st.latex(r'\pi = \pi^e + \beta\frac{Y - Y_n}{Y_n}')
 
-st.markdown("""
-这些模型共同构成了一个动态的宏观经济系统,能够模拟经济对各种政策和冲击的反应。模型考虑了产出、利率、汇率、价格水平、通胀预期、失业率等关键经济变量之间的相互作用。
+    st.markdown("这个曲线描述了通胀率与产出缺口之间的关系。β是菲利普斯曲线的斜率。")
 
-### 主要特点:
-- 考虑了开放经济（包含汇率和国际贸易）
-- 包含价格粘性和通胀预期的动态调整
-- 纳入了货币政策规则（泰勒规则）
-- 考虑了长期经济增长
-- 包含了劳动市场（通过奥肯法则和菲利普斯曲线）
+    st.markdown("""
+    这些模型共同构成了一个动态的宏观经济系统,能够模拟经济对各种政策和冲击的反应。模型考虑了产出、利率、汇率、价格水平、通胀预期、失业率等关键经济变量之间的相互作用。
 
-通过调整不同的参数,你可以观察经济如何对不同的政策和冲击做出反应。这有助于理解宏观经济政策的效果和经济系统的动态特性。
-""")
+    ### 主要特点:
+    - 考虑了开放经济（包含汇率和国际贸易）
+    - 包含价格粘性和通胀预期的动态调整
+    - 纳入了货币政策规则（泰勒规则）
+    - 考虑了长期经济增长
+    - 包含了劳动市场（通过奥肯法则和菲利普斯曲线）
+
+    通过调整不同的参数,你可以观察经济如何对不同的政策和冲击做出反应。这有助于理解宏观经济政策的效果和经济系统的动态特性。
+    """)
