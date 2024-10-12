@@ -3,8 +3,6 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 from scipy.optimize import fsolve
 
 # 更新默认参数
@@ -262,28 +260,8 @@ if st.button('运行模拟'):
 
     # 为每个经济指标创建单独的图表
     for column in df_history.columns:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df_history.index, y=df_history[column], mode='lines+markers', name=column))
-        
-        fig.update_layout(
-            title=f'{column}随时间的变化',
-            xaxis_title='时期',
-            yaxis_title='数值',
-            height=500,
-            width=700,
-        )
-        
-        # 添加网格线
-        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
-        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey')
-        
-        # 设置y轴的范围，使零点更明显
-        y_min = min(0, df_history[column].min() * 1.1)
-        y_max = max(0, df_history[column].max() * 1.1)
-        fig.update_yaxes(range=[y_min, y_max])
-
-        # 在Streamlit中显示图表
-        st.plotly_chart(fig)
+        st.subheader(f'{column}随时间的变化')
+        st.line_chart(df_history[column])
         
         # 添加变量解释
         st.markdown(f"### {column}的影响")
